@@ -2,6 +2,7 @@
 
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -16,13 +17,11 @@ using Unity.Mathematics;
         [ReadOnly] public GridMeta GridMeta;
         public NativeArray<FfNeighboursCost> NeighboursCosts;
         [ReadOnly] public NativeArray<int3> Directions;
-        [ReadOnly] public NativeReference<bool> CancelationToken;
 
         [BurstCompile]
         public void Execute(int index)
         {
-            if (CancelationToken.Value)
-                return;
+
             BestCosts[index] = new FfCellBestCost { BestCost = uint.MaxValue };
             var cellData = CellsData[index];
             byte north = byte.MaxValue;
@@ -46,9 +45,9 @@ using Unity.Mathematics;
             foreach (var dir in Directions)
             {
                 int3 neighborPos = cellData.GridPos + dir;
-                if (neighborPos.x < 0 || neighborPos.z < 0 || neighborPos.x >= GridMeta.SizeX || neighborPos.z >= GridMeta.SizeZ)
+                if (neighborPos.x < 0 || neighborPos.z < 0 || neighborPos.x >= GridMeta.CellsInChunkRow || neighborPos.z >= GridMeta.CellsInChunkRow)
                     continue;
-                int neighborIndex = neighborPos.x + neighborPos.z * GridMeta.SizeX;
+                int neighborIndex = neighborPos.x + neighborPos.z * GridMeta.CellsInChunkRow;
                 var neighborCell = CellsData[neighborIndex];
                 if (!neighborCell.Walkable)
                     continue;
@@ -120,30 +119,140 @@ using Unity.Mathematics;
             };
         }
     }
-
-    [BurstCompile]
-    public partial struct CalculateIntegrationFieldJob : IJob
+[BurstCompile]
+    public partial struct CalculateIntegrationFieldUniformJob : IJob
     {
-        [ReadOnly] public NativeArray<FfCellData> CellsData;
         public NativeArray<FfCellBestCost> CellsBestCosts;
-        public NativeMinHeap OpenList;
         public GridMeta GridMeta;
-        public FfDestination Destination;
+        public int destIndex;
         [ReadOnly] public NativeArray<FfNeighboursCost> NeighboursCosts;
         [ReadOnly] public NativeArray<int3> Directions;
-        [ReadOnly] public NativeReference<bool> CancelationToken;
 
 
         [BurstCompile]
         public void Execute()
         {
-            int destIndex = Destination.Index;
+            NativeQueue<int> OpenList = new NativeQueue<int>(Allocator.Persistent);
+            CellsBestCosts[destIndex] = new FfCellBestCost { BestCost = 0 };
+            OpenList.Enqueue(destIndex);
+            while (!OpenList.IsEmpty())
+            {
+                int currentIndex = OpenList.Dequeue();
+                var currentCellBestCost = CellsBestCosts[currentIndex].BestCost;
+
+                FfNeighboursCost neighboursCost = NeighboursCosts[currentIndex];
+                
+                byte northCost = neighboursCost.North;
+                byte eastCost = neighboursCost.East;
+                byte southCost = neighboursCost.South;
+                byte westCost = neighboursCost.West;
+                byte northEastCost = neighboursCost.NorthEast;
+                byte southEastCost = neighboursCost.SouthEast;
+                byte southWestCost = neighboursCost.SouthWest;
+                byte northWestCost = neighboursCost.NorthWest;
+
+                if (northCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.NorthPos;
+                    uint newCost = currentCellBestCost + neighboursCost.North;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (eastCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.EastPos;
+                    uint newCost = currentCellBestCost + neighboursCost.East;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (southCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.SouthPos;
+                    uint newCost = currentCellBestCost + neighboursCost.South;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (westCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.WestPos;
+                    uint newCost = currentCellBestCost + neighboursCost.West;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (northEastCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.NorthEastPos;
+                    uint newCost = currentCellBestCost + neighboursCost.NorthEast;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (southEastCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.SouthEastPos;
+                    uint newCost = currentCellBestCost + neighboursCost.SouthEast;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (southWestCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.SouthWestPos;
+                    uint newCost = currentCellBestCost + neighboursCost.SouthWest;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+                if (northWestCost != byte.MaxValue)
+                {
+                    int neighborIndex = neighboursCost.NorthWestPos;
+                    uint newCost = currentCellBestCost + neighboursCost.NorthWest;
+                    if (newCost < CellsBestCosts[neighborIndex].BestCost)
+                    {
+                        CellsBestCosts[neighborIndex] = new FfCellBestCost { BestCost = newCost };
+                        OpenList.Enqueue(neighborIndex);
+                    }
+                }
+            }
+            OpenList.Dispose();
+        }
+    }
+    [BurstCompile]
+    public partial struct CalculateIntegrationFieldJob : IJob
+    {
+        public NativeArray<FfCellBestCost> CellsBestCosts;
+        public NativeMinHeap OpenList;
+        public GridMeta GridMeta;
+        public int destIndex;
+        [ReadOnly] public NativeArray<FfNeighboursCost> NeighboursCosts;
+        [ReadOnly] public NativeArray<int3> Directions;
+
+
+        [BurstCompile]
+        public void Execute()
+        {
             CellsBestCosts[destIndex] = new FfCellBestCost { BestCost = 0 };
             OpenList.Enqueue(destIndex, 0);
             while (!OpenList.IsEmpty)
             {
-                if (CancelationToken.Value)
-                    return;
                 int currentIndex = OpenList.Dequeue();
                 var currentCellBestCost = CellsBestCosts[currentIndex].BestCost;
 
@@ -247,15 +356,11 @@ using Unity.Mathematics;
         [ReadOnly] public NativeArray<FfCellBestCost> CellsBestCosts;
         [ReadOnly] public NativeArray<int3> Directions;
         public NativeArray<FfCellBestDirection> CellsBestDirections;
-        [ReadOnly] public NativeReference<bool> CancelationToken;
-
         public GridMeta GridMeta;
 
         [BurstCompile]
         public void Execute(int index)
         {
-            if (CancelationToken.Value)
-                return;
             var cellBestCost = CellsBestCosts[index];
             if (cellBestCost.BestCost == uint.MaxValue)
             {
@@ -263,7 +368,7 @@ using Unity.Mathematics;
                 return;
             }
 
-            int3 cellPos = new int3(index % GridMeta.SizeX, 0, index / GridMeta.SizeX);
+            int3 cellPos = new int3(index % GridMeta.CellsInChunkRow, 0, index / GridMeta.CellsInChunkRow);
 
             float3 bestDirection = float3.zero;
             uint lowestCost = cellBestCost.BestCost;
@@ -271,10 +376,10 @@ using Unity.Mathematics;
             foreach (var dir in Directions)
             {
                 int3 neighborPos = cellPos + dir;
-                if (neighborPos.x < 0 || neighborPos.x >= GridMeta.SizeX || neighborPos.z < 0 || neighborPos.z >= GridMeta.SizeZ)
+                if (neighborPos.x < 0 || neighborPos.x >= GridMeta.CellsInChunkRow || neighborPos.z < 0 || neighborPos.z >= GridMeta.CellsInChunkRow)
                     continue;
 
-                int neighborIndex = neighborPos.x + neighborPos.z * GridMeta.SizeX;
+                int neighborIndex = neighborPos.x + neighborPos.z * GridMeta.CellsInChunkRow;
                 var neighborBestCost = CellsBestCosts[neighborIndex];
 
                 if (neighborBestCost.BestCost < lowestCost)
@@ -288,23 +393,4 @@ using Unity.Mathematics;
         }
     }
 
-    public struct FfNeighboursCost
-    {
-        public int NorthPos;
-        public int EastPos;
-        public int SouthPos;
-        public int WestPos;
-        public int NorthEastPos;
-        public int SouthEastPos;
-        public int SouthWestPos;
-        public int NorthWestPos;
-
-        public byte North;
-        public byte East;
-        public byte South;
-        public byte West;
-        public byte NorthEast;
-        public byte SouthEast;
-        public byte SouthWest;
-        public byte NorthWest;
-    }
+    

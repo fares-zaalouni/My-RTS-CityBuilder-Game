@@ -7,7 +7,7 @@ using UnityEngine;
 
 [UpdateInGroup(typeof(SimulationSystemGroup))]
 partial struct SelectionSystem : ISystem
-{
+{/*
     private short _NextGroupId;
 
     [BurstCompile]
@@ -64,12 +64,11 @@ partial struct SelectionSystem : ISystem
                 ffStateData.ValueRW.State = FfStateData.FlowFieldSate.Available;
         }
 
-
     }
    
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
-    }
+    }*/
 }

@@ -149,7 +149,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridAuthoring
   WorldSize: {x: 256, y: 0, z: 256}
-  CellRadius: 0.25
+  CellRadius: 0.5
+  ChunkRadius: 16
 --- !u!4 &367793904
 Transform:
   m_ObjectHideFlags: 0

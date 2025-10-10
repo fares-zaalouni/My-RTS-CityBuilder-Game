@@ -1,7 +1,9 @@
 
 using System.Linq;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using Unity.Mathematics;
 using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
@@ -18,17 +20,14 @@ public class GridDebug : MonoBehaviour
         BestCost
     }
     [SerializeField] bool Active;
-    [SerializeField] bool GameMode = true;
     [SerializeField] DisplayMode displayMode = DisplayMode.Walkable;
     [SerializeField] bool displayGrid = true;
 
-    
+
     void OnDrawGizmos()
     {
         if (!Active)
             return;
-        if (GameMode)
-                return;
         if (!displayGrid)
             return;
         // World might not exist yet (outside play mode)
@@ -40,168 +39,84 @@ public class GridDebug : MonoBehaviour
         if (entityManager == null)
             return;
 
+
         var query = entityManager.CreateEntityQuery(
-            typeof(FfBestCosts),
-            typeof(FfBestDirections),
-            typeof(FfGridData),
-            typeof(FfStateData)
-            );
+          typeof(GridMeta));
         if (query.CalculateEntityCount() == 0)
             return;
-
-        FfGridData gridDynamic = query.GetSingleton<FfGridData>();
-        FfBestCosts bestCosts = query.GetSingleton<FfBestCosts>();
-        FfBestDirections bestDirections = query.GetSingleton<FfBestDirections>();
-        FfStateData flowFieldState = query.GetSingleton<FfStateData>();
-
-
-        if (flowFieldState.JobHandles[2].IsCompleted)
-                flowFieldState.JobHandles[2].Complete();
-            else
-                return;
-        query = entityManager.CreateEntityQuery(
-            typeof(GridMeta));
-
-        if (query.CalculateEntityCount() == 0)
-            return;
-
         GridMeta gridMeta = query.GetSingleton<GridMeta>();
 
-        for (int x = 0; x < gridMeta.GridSize; x++)
+        query = entityManager.CreateEntityQuery(
+          typeof(SegmentedFlowField));
+
+        if (query.CalculateEntityCount() == 0)
+            return;
+        SegmentedFlowField segmentedFlowField = query.GetSingleton<SegmentedFlowField>();
+
+        query = entityManager.CreateEntityQuery(
+          typeof(FfBestDirections));
+        if (query.CalculateEntityCount() != 0)
         {
-            Gizmos.color = gridDynamic.Cells[x].Walkable ? Color.white : Color.red;
-            Gizmos.DrawWireCube(
-                new Vector3(
-                    (x % gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.x + gridMeta.CellRadius,
-                    0,
-                    (x / gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.z + gridMeta.CellRadius),
-                new Vector3(gridMeta.CellDiameter, 0.1f, gridMeta.CellDiameter)
-            );
-
-#if UNITY_EDITOR
-            Handles.Label(
-                new Vector3(
-                    (x % gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.x + gridMeta.CellRadius,
-                    0,
-                    (x / gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.z + gridMeta.CellRadius),
-
-                displayMode == DisplayMode.Cost ? gridDynamic.Cells[x].Cost.ToString()
-                : displayMode == DisplayMode.BestCost ? bestCosts.Cells[x].BestCost.ToString()
-                : ""
-            );
-            Handles.color = Color.green;
-            //Handles.Label(new Vector3(64, 20, 64), $"State: {gridDynamic.State}");
-#endif
-            if (displayMode == DisplayMode.BestDirection)
+            
+            using (NativeArray<FfBestDirections> bestDirections =
+                    query.ToComponentDataArray<FfBestDirections>(Allocator.TempJob))
             {
-                Gizmos.color = Color.blue;
-                Gizmos.DrawRay(
-                    new Vector3(
-                        (x % gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.x + gridMeta.CellRadius,
-                        0,
-                        (x / gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.z + gridMeta.CellRadius),
-                    new Vector3(bestDirections.Cells[x].BestDirection.x, 0, bestDirections.Cells[x].BestDirection.z) * gridMeta.CellRadius
-                );
+                
+                for(int i = 0; i < gridMeta.CellsInChunk; i++)
+                {
+                    //Debug.Log("Direction: " + i + ": " + bestDirections[0].Cells[i].BestDirection);
+                    int chunkX = bestDirections[0].ChunkPosition % gridMeta.ChunksInX;
+                    int chunkZ = bestDirections[0].ChunkPosition / gridMeta.ChunksInZ;
+                    int cellInChunkX = i % gridMeta.CellsInChunkRow;
+                    int cellInChunkZ = i / gridMeta.CellsInChunkRow;
+                    float3 posCell = new float3
+                    {
+                        x = gridMeta.WorldPos.x + chunkX * gridMeta.ChunkDiameter + cellInChunkX * gridMeta.CellDiameter + gridMeta.CellRadius,
+                        y = 0,
+                        z = gridMeta.WorldPos.z + chunkZ * gridMeta.ChunkDiameter + cellInChunkZ * gridMeta.CellDiameter + gridMeta.CellRadius
+                    };
+                    Gizmos.DrawRay(posCell, bestDirections[0].Cells[i].BestDirection);
+                }
             }
         }
-    }
-    public Material lineMaterial;
-    void OnRenderObject()
-    {
-        if (!Active)
-            return;
-        if (lineMaterial == null) return;
-        if(!displayGrid)
-            return;
-        if(!GameMode)
-            return;
-        lineMaterial.SetPass(0);
-        
-        GL.Begin(GL.LINES);
-
-        GL.Color(Color.green);
-
-        if (World.DefaultGameObjectInjectionWorld == null)
-            return;
-
-        var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-
-        if (entityManager == null)
-            return;
-
-        var query = entityManager.CreateEntityQuery(
-            typeof(FfBestCosts),
-            typeof(FfBestDirections),
-            typeof(FfGridData),
-            typeof(FfStateData)
-            );
-        if (query.CalculateEntityCount() == 0)
-            return;
-
-        FfGridData gridDynamic = query.GetSingleton<FfGridData>();
-        FfBestCosts bestCosts = query.GetSingleton<FfBestCosts>();
-        FfBestDirections bestDirections = query.GetSingleton<FfBestDirections>();
-        FfStateData flowFieldState = query.GetSingleton<FfStateData>();
-
-        query = entityManager.CreateEntityQuery(
-            typeof(GridMeta));
-
-        if (query.CalculateEntityCount() == 0)
-            return;
-        GridMeta gridMeta = query.GetSingleton<GridMeta>();
-
-        GL.PushMatrix();
-
-        for (int x = 0; x < gridMeta.GridSize; x++)
+        for (int i = 0; i < gridMeta.ChunkNumber; i++)
         {
-            // Cell center
-            Vector3 center = new Vector3(
-                (x % gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.x + gridMeta.CellRadius,
+            int x = i % gridMeta.ChunksInX;
+            int z = i / gridMeta.ChunksInX;
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireCube(new Vector3(
+                x * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.WorldPos.x + gridMeta.ChunkRadius,
                 0,
-                (x / gridMeta.SizeX * gridMeta.CellDiameter) + gridMeta.WorldPos.z + gridMeta.CellRadius
-            );
+                z * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.WorldPos.z + gridMeta.ChunkRadius)
+                , new Vector3(gridMeta.ChunkDiameter + 0.25f, 0, gridMeta.ChunkDiameter + 0.25f));
 
-            // Color: walkable or not
-            Color cellColor = gridDynamic.Cells[x].Walkable ? Color.green : Color.red;
-            GL.Color(cellColor);
-
-            // Draw a wire cube (top face square only for simplicity)
-            float half = gridMeta.CellDiameter * 0.5f;
-            Vector3[] corners =
+            Gizmos.color = Color.red;
+           
+            for (int j = 0; j < gridMeta.CellsInChunk; j++)
             {
-                center + new Vector3(-half, 0, -half),
-                center + new Vector3( half, 0, -half),
-                center + new Vector3( half, 0,  half),
-                center + new Vector3(-half, 0,  half),
-            };
-
-            for (int i = 0; i < 4; i++)
-            {
-                GL.Vertex(corners[i]);
-                GL.Vertex(corners[(i + 1) % 4]);
-            }
-
-            // Draw best direction ray if needed
-            if (displayMode == DisplayMode.BestDirection)
-            {
-                GL.Color(Color.blue);
-                Vector3 dir = new Vector3(
-                    bestDirections.Cells[x].BestDirection.x,
-                    0,
-                    bestDirections.Cells[x].BestDirection.z
-                ) * gridMeta.CellRadius;
-
-                GL.Vertex(center);
-                GL.Vertex(center + dir);
+                int x2 = j % gridMeta.CellsInChunkRow;
+                int z2 = j / gridMeta.CellsInChunkRow;
+                Gizmos.DrawWireCube(new Vector3(
+                x2 * gridMeta.CellDiameter + gridMeta.WorldPos.x + x * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.CellRadius,
+                0,
+                z2 * gridMeta.CellDiameter + gridMeta.WorldPos.z + z * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.CellRadius),
+                new Vector3(gridMeta.CellDiameter, 0, gridMeta.CellDiameter));
             }
         }
+        
 
-        GL.End();
-        GL.PopMatrix();
     }
-  void OnGUI()
-  {
-    GUI.color = Color.black;
-    GUI.Label(new Rect(10, 10, 150, 200), "FlowField took: " + FlowFieldSystem.FieldFlowTime + " ms");
-  }
+
+    void OnGUI()
+    {
+        var query = World.DefaultGameObjectInjectionWorld.EntityManager.CreateEntityQuery(
+                typeof(FlowFieldTime));
+
+        if (query.CalculateEntityCount() == 0)
+            return;
+
+        FlowFieldTime time = query.GetSingleton<FlowFieldTime>();
+        GUI.color = Color.black;
+        GUI.Label(new Rect(10, 100, 150, 200), "FlowField took: " + time.time + " ms");
+    }
 }

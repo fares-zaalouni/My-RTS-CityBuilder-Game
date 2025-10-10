@@ -6,6 +6,8 @@ public struct FfBestDirections : IComponentData
 {
     public NativeArray<FfCellBestDirection> Cells;
     public byte AssignedGroup;    
+    public int ChunkPosition;
+
 
 }
 

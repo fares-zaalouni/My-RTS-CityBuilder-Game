@@ -17,7 +17,7 @@ public class UnitSelectionManager : MonoBehaviour
     {
         if (Instance != null && Instance != this)
         {
-            Destroy(gameObject); // Prevent duplicates
+            Destroy(gameObject);
             return;
         }
         Instance = this;

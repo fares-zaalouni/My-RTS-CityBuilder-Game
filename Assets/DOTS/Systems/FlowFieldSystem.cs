@@ -1,34 +1,33 @@
-using System;
-using System.Diagnostics;
+
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Entities.UniversalDelegates;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
+
 
 using Debug = UnityEngine.Debug;
 
 [UpdateAfter(typeof(SelectionSystem))]
+[UpdateAfter(typeof(GridInitializationSystem))]
 [UpdateInGroup(typeof(SimulationSystemGroup))]
 [BurstCompile]
 partial struct FlowFieldSystem : ISystem
 {
-
     public static float FieldFlowTime;
     NativeArray<FfNeighboursCost> NeighboursCosts;
     NativeArray<int3> Directions;
+    EntityQuery _SegmentedFlowFieldQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         state.RequireForUpdate<GridMeta>();
-        state.RequireForUpdate<FfGridData>();
-        state.RequireForUpdate<FfBestCosts>();
-        state.RequireForUpdate<FfStateData>();
-        state.RequireForUpdate<FfDestination>();
-        //stopwatch = Stopwatch.StartNew();
+        
+        _SegmentedFlowFieldQuery = new EntityQueryBuilder(Allocator.Temp)
+            .WithAll<SegmentedFlowField>()
+            .WithNone<Disabled>()
+            .Build(ref state);
 
         Directions = new NativeArray<int3>(8, Allocator.Persistent);
         Directions[0] = new int3(0, 0, 1); // North
@@ -39,114 +38,78 @@ partial struct FlowFieldSystem : ISystem
         Directions[5] = new int3(1, 0, -1); // SouthEast
         Directions[6] = new int3(-1, 0, -1); // SouthWest
         Directions[7] = new int3(-1, 0, 1); // NorthWest
-
+        Entity time = state.EntityManager.CreateEntity();
+        state.EntityManager.AddComponentData(time, new FlowFieldTime { time = 0 });
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+
+        var ecb = new EntityCommandBuffer(Allocator.Temp);
+        using (NativeArray<SegmentedFlowField> flowFields =
+               _SegmentedFlowFieldQuery.ToComponentDataArray<SegmentedFlowField>(Allocator.TempJob))
+
+        {
+            
+            foreach (var (clickCommand, entity) in SystemAPI.Query<RefRO<ClickCommand>>().WithEntityAccess())
+            {
+                ProcessClickCommand(flowFields[0], clickCommand.ValueRO, ref ecb, ref state);
+                ecb.DestroyEntity(entity);
+            }
+        }        
+        
+
+        ecb.Playback(state.EntityManager);
+        ecb.Dispose();
+
+    }
+
+    public void ProcessClickCommand(SegmentedFlowField segmentedFlowField, ClickCommand clickCommand, ref EntityCommandBuffer ecb, ref SystemState state)
+    {
         GridMeta gridMeta = SystemAPI.GetSingleton<GridMeta>();
+        FfGridData gridData = SystemAPI.GetSingleton<FfGridData>();
 
-        if (!NeighboursCosts.IsCreated || NeighboursCosts.Length != gridMeta.GridSize)
+        int chunkPos = GridUtils.GetChunkFromPosition(clickCommand.Pos, gridMeta);
+
+        JobHandle initChunkFf = new InitFlowFieldJob()
         {
-            if (NeighboursCosts.IsCreated)
-                NeighboursCosts.Dispose();
-            NeighboursCosts = new NativeArray<FfNeighboursCost>(gridMeta.GridSize, Allocator.Persistent);
-        }
-        foreach (var (ffDynamic, ffBestCosts, ffOpenList, ffState, destination, ffCancelationToken) in SystemAPI.Query<
-        RefRO<FfGridData>,
-        RefRW<FfBestCosts>,
-        RefRW<FFOpenList>,
-        RefRW<FfStateData>,
-        RefRO<FfDestination>,
-        RefRO<FfCancelationToken>
-        >())
+            BestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
+            CellsData = gridData.Cells[chunkPos],
+            Directions = Directions,
+            GridMeta = gridMeta,
+            NeighboursCosts = segmentedFlowField.FfNeighboursChunk[chunkPos].Cells
+        }.Schedule(gridMeta.CellsInChunk, 64);
+
+        JobHandle integrationFieldChunk = new CalculateIntegrationFieldUniformJob
         {
-            if (ffState.ValueRO.State == FfStateData.FlowFieldSate.Available)
-            {
-                var entityManager = state.EntityManager;
-                Entity entity = entityManager.CreateEntity();
-                FfBestDirections ffBestDirections = new FfBestDirections
-                {
-                    Cells = new NativeArray<FfCellBestDirection>(),
-                    AssignedGroup = destination.ValueRO.AssignedGroup
-                };
-                entityManager.AddComponentData(entity, ffBestDirections);
-                ffState.ValueRW.State = FfStateData.FlowFieldSate.Calculating;
-                var initJob = new InitFlowFieldJob
-                {
-                    BestCosts = ffBestCosts.ValueRW.Cells,
-                    GridMeta = gridMeta,
-                    CellsData = ffDynamic.ValueRO.Cells,
-                    NeighboursCosts = NeighboursCosts,
-                    Directions = Directions,
-                    CancelationToken = ffCancelationToken.ValueRO.Token
-                }.Schedule(ffDynamic.ValueRO.Cells.Length, 64);
+            CellsBestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
+            destIndex = GridUtils.GetCellInChunkFromPosition(clickCommand.Pos, gridMeta),
+            Directions = Directions,
+            GridMeta = gridMeta,
+            NeighboursCosts = segmentedFlowField.FfNeighboursChunk[chunkPos].Cells,
+        }.Schedule(initChunkFf);
+        
+        Entity bestDestinationEntity = ecb.CreateEntity();
+        FfBestDirections ffBestDirections = new FfBestDirections
+        {
+            Cells = new NativeArray<FfCellBestDirection>(gridMeta.CellsInChunk, Allocator.Persistent),
+            ChunkPosition = chunkPos
+        };
+        ecb.AddComponent(bestDestinationEntity, ffBestDirections);
 
-                var integrationJob = new CalculateIntegrationFieldJob
-                {
-                    CellsData = ffDynamic.ValueRO.Cells,
-                    CellsBestCosts = ffBestCosts.ValueRW.Cells,
-                    GridMeta = gridMeta,
-                    Destination = destination.ValueRO,
-                    OpenList = ffOpenList.ValueRW.Heap,
-                    NeighboursCosts = NeighboursCosts,
-                    Directions = Directions,
-                    CancelationToken = ffCancelationToken.ValueRO.Token
-                }.Schedule(initJob);
-
-                var directionJob = new CalculateBestDirectionJob
-                {
-                    Directions = Directions,
-                    CellsBestCosts = ffBestCosts.ValueRW.Cells,
-                    CellsBestDirections = ffBestDirections.Cells,
-                    GridMeta = gridMeta,
-                    CancelationToken = ffCancelationToken.ValueRO.Token
-                }.Schedule(ffBestCosts.ValueRW.Cells.Length, 64, integrationJob);
-                
-                //Registring job handles          
-                ffState.ValueRW.JobHandles[0] = initJob; 
-                ffState.ValueRW.JobHandles[1] = integrationJob; 
-                ffState.ValueRW.JobHandles[2] = directionJob;
-
-                ffState.ValueRW.State = FfStateData.FlowFieldSate.Waiting;
-
-            }
-            
-            if (ffState.ValueRO.JobHandles[2].IsCompleted)
-            {
-                ffState.ValueRO.JobHandles[2].Complete();
-                ffState.ValueRW.State = FfStateData.FlowFieldSate.Ready;
-
-            }
-
-            
-        }
+        JobHandle bestDirectionsInChunk = new CalculateBestDirectionJob
+        {
+            CellsBestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
+            CellsBestDirections = ffBestDirections.Cells,
+            Directions = Directions,
+            GridMeta = gridMeta
+        }.Schedule(gridMeta.CellsInChunk, 64, integrationFieldChunk);
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        if (NeighboursCosts.IsCreated)
-            NeighboursCosts.Dispose();
-        if (Directions.IsCreated)
-            Directions.Dispose();
-
-        foreach (var (ffDynamic, ffBestCosts, ffOpenList, ffState, ffCancelationToken) in SystemAPI.Query<
-        RefRW<FfGridData>,
-        RefRW<FfBestCosts>,
-        RefRW<FFOpenList>,
-        RefRW<FfStateData>,
-        RefRW<FfCancelationToken>
-        >())
-        {
-            ffDynamic.ValueRW.Cells.Dispose();
-            ffBestCosts.ValueRW.Cells.Dispose();
-            ffOpenList.ValueRW.Heap.Dispose();
-            ffState.ValueRW.JobHandles.Dispose();
-            ffCancelationToken.ValueRW.Token.Dispose();
-        }
+        Directions.Dispose();
     }
-
-    
-    
+ 
 }

@@ -19,13 +19,73 @@ public partial struct GridInitializationSystem : ISystem
     }
     public void OnUpdate(ref SystemState state)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
         GridMeta grid = SystemAPI.GetSingleton<GridMeta>();
-        for (int ff = 0; ff < INITIAL_FF_COUNT; ff++)
+
+        Entity entity = state.EntityManager.CreateEntity();
+
+        FfGridData gridDynamic = new FfGridData
+        {
+            Cells = new NativeArray<NativeArray<FfCellData>>(grid.ChunkNumber, Allocator.Persistent)
+        };
+        for (int i = 0; i < grid.ChunkNumber; i++)
+        {
+            gridDynamic.Cells[i] = new NativeArray<FfCellData>(grid.CellsInChunk, Allocator.Persistent);
+        }
+
+        Entity flowFieldChunk = state.EntityManager.CreateEntity();
+
+        SegmentedFlowField segmentedFlowField = new SegmentedFlowField
+        {
+            FfBestCostsChunk = new NativeArray<FfBestCosts>(grid.ChunkNumber, Allocator.Persistent),
+            FfNeighboursChunk = new NativeArray<FfNeighboursCosts>(grid.ChunkNumber, Allocator.Persistent),
+            FfMetaDataChunk = new NativeArray<FfMetaData>(grid.ChunkNumber, Allocator.Persistent),
+        };
+        
+
+
+        for (int i = 0; i < grid.ChunkNumber; i++)
+        {
+            var row = gridDynamic.Cells[i];
+            for(int j = 0; j < grid.CellsInChunk; j++ )
+            {
+                int chunkX = j % grid.CellsInChunkRow; 
+                int chunkZ = j / grid.CellsInChunkRow; 
+                row[j] = new FfCellData
+                {
+                    Walkable = true,
+                    Cost = 1,
+                    GridPos = new int3(chunkX, 0, chunkZ)
+                };
+            }
+            
+        }
+
+        for (int i = 0; i < grid.ChunkNumber; i++)
+        {
+            segmentedFlowField.FfMetaDataChunk[i] = new FfMetaData
+            {
+                JobHandles = new NativeArray<JobHandle>(3, Allocator.Persistent),
+                //State = FlowFieldState.Available
+            };
+
+            segmentedFlowField.FfBestCostsChunk[i] = new FfBestCosts
+            {
+                Cells = new NativeArray<FfCellBestCost>(grid.CellsInChunk, Allocator.Persistent)
+            };
+
+            segmentedFlowField.FfNeighboursChunk[i] = new FfNeighboursCosts
+            {
+                Cells = new NativeArray<FfNeighboursCost>(grid.CellsInChunk * 8, Allocator.Persistent)
+            };
+        }
+        state.EntityManager.AddComponentData(entity, gridDynamic);
+
+        state.EntityManager.AddComponentData(flowFieldChunk, segmentedFlowField);
+        
+        /*for (int ff = 0; ff < INITIAL_FF_COUNT; ff++)
         {
 
 
-            Entity entity = state.EntityManager.CreateEntity();
 
             FfStateData ffState = new FfStateData
             {
@@ -33,10 +93,7 @@ public partial struct GridInitializationSystem : ISystem
                 JobHandles = new NativeArray<JobHandle>(3, Allocator.Persistent)
             };
 
-            FfGridData gridDynamic = new FfGridData
-            {
-                Cells = new NativeArray<FfCellData>(grid.GridSize, Allocator.Persistent)
-            };
+            
 
             FfBestCosts bestCosts = new FfBestCosts
             {
@@ -80,8 +137,8 @@ public partial struct GridInitializationSystem : ISystem
             state.EntityManager.AddComponentData(entity, cancelationToken);
             stopwatch.Stop();
             Debug.Log("creating flow field took: " + stopwatch.ElapsedMilliseconds + " ms");
-            state.Enabled = false;
-        }
-
+            
+        }*/
+        state.Enabled = false;
     }
 }

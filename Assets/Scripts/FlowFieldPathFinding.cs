@@ -30,7 +30,7 @@ public class FlowFieldPathFinding : MonoBehaviour
     void OnEnable()
     {
         UnitSelectionManager.OnMoveTo += MoveTo;
-        InputManager.OnRightClick += CancelPathFinding;
+        
     }
 
     private void MoveTo(Vector3 pos, List<Unit> list)
@@ -60,7 +60,6 @@ public class FlowFieldPathFinding : MonoBehaviour
     {
         if (Units.Count == 0)
             return;
-        RequestCurrentDirection();
     }
 
     void LateUpdate()
@@ -85,47 +84,11 @@ public class FlowFieldPathFinding : MonoBehaviour
             }
         }
     }
-    private void RequestCurrentDirection()
-    {
-        for (int i = 0; i < Units.Count; i++)
-        {
-            var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-            var entity = entityManager.CreateEntity();
-            entityManager.AddComponentData(entity, new UnitDirectionRequest
-            {
-                Index = i,
-                WorldPos = Units[i].transform.position
-            });
-        }
-    }
+   
 
     private void ProcessMovement()
     {
-        var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        var query = entityManager.CreateEntityQuery(typeof(UnitDirectionResponse));
-        var entities = query.ToEntityArray(Allocator.Temp);
-        var directions = query.ToComponentDataArray<UnitDirectionResponse>(Allocator.Temp);
-
-        query = entityManager.CreateEntityQuery(typeof(FfDestination));
-        //FfDestination query
-
-        var ecb = new EntityCommandBuffer(Allocator.Temp);
-
-        foreach (var directionComponent in directions)
-        {
-            float3 direction = directionComponent.Direction;
-            if (direction.Equals(float3.zero))
-            {
-                continue;
-            }
-            Vector3 normalizedDirecion = new Vector3(direction.x, 0, direction.z).normalized;
-            Unit unit = Units[directionComponent.Index];
-            Vector3 velociy = Time.deltaTime * unit.MovementSpeed * normalizedDirecion;
-
-            unit.transform.Translate(velociy);
-            ecb.DestroyEntity(entities);
-        }
-        ecb.Playback(entityManager);
+        
     }
 
     void OnDisable()
@@ -134,15 +97,4 @@ public class FlowFieldPathFinding : MonoBehaviour
     }
 
 
-
-
-
-    void CancelPathFinding(Vector2 vec)
-    {
-        var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        var query = entityManager.CreateEntityQuery(typeof(FfCancelationToken));
-        var cancelationToken = query.ToComponentDataArray<FfCancelationToken>(Allocator.Temp);
-        var reff = cancelationToken[0];
-        reff.Token.Value = true;
-    }
 }
