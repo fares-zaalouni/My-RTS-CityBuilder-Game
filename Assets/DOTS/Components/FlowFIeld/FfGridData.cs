@@ -11,26 +11,24 @@ public enum FlowFieldState
   }
 public struct FfMetaData : IComponentData
 {
-  
-
-  //public FlowFieldState State;
   public NativeArray<JobHandle> JobHandles;
 }
 
-
-public struct FfCellData : IComponentData
+public struct FfCellData
 {
   public bool Walkable;
   public byte Cost;
   public int3 GridPos;
 }
 
-public struct FfGridData : IComponentData
+public struct FfGridChunkData : IComponentData
 {
-  public NativeArray<NativeArray<FfCellData>> Cells;
+  public short ChunkPosX;
+  public short ChunkPosZ;
+  public NativeArray<FfCellData> Cells;
 }
 
-public struct FfCellBestCost : IComponentData
+public struct FfCellBestCost
 {
   public uint BestCost;
 }

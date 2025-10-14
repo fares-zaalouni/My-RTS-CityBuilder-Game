@@ -15,7 +15,6 @@ using Debug = UnityEngine.Debug;
 partial struct FlowFieldSystem : ISystem
 {
     public static float FieldFlowTime;
-    NativeArray<FfNeighboursCost> NeighboursCosts;
     NativeArray<int3> Directions;
     EntityQuery _SegmentedFlowFieldQuery;
 
@@ -25,7 +24,7 @@ partial struct FlowFieldSystem : ISystem
         state.RequireForUpdate<GridMeta>();
         
         _SegmentedFlowFieldQuery = new EntityQueryBuilder(Allocator.Temp)
-            .WithAll<SegmentedFlowField>()
+            .WithAll<SegmentedFlowFieldCalculationData>()
             .WithNone<Disabled>()
             .Build(ref state);
 
@@ -47,8 +46,8 @@ partial struct FlowFieldSystem : ISystem
     {
 
         var ecb = new EntityCommandBuffer(Allocator.Temp);
-        using (NativeArray<SegmentedFlowField> flowFields =
-               _SegmentedFlowFieldQuery.ToComponentDataArray<SegmentedFlowField>(Allocator.TempJob))
+        using (NativeArray<SegmentedFlowFieldCalculationData> flowFields =
+               _SegmentedFlowFieldQuery.ToComponentDataArray<SegmentedFlowFieldCalculationData>(Allocator.TempJob))
 
         {
             
@@ -65,29 +64,36 @@ partial struct FlowFieldSystem : ISystem
 
     }
 
-    public void ProcessClickCommand(SegmentedFlowField segmentedFlowField, ClickCommand clickCommand, ref EntityCommandBuffer ecb, ref SystemState state)
+    public void ProcessClickCommand(SegmentedFlowFieldCalculationData segmentedFlowField, ClickCommand clickCommand, ref EntityCommandBuffer ecb, ref SystemState state)
     {
         GridMeta gridMeta = SystemAPI.GetSingleton<GridMeta>();
-        FfGridData gridData = SystemAPI.GetSingleton<FfGridData>();
+        SegmentedFlowFieldData gridData = SystemAPI.GetSingleton<SegmentedFlowFieldData>();
 
         int chunkPos = GridUtils.GetChunkFromPosition(clickCommand.Pos, gridMeta);
 
+        Entity ffGridChunkDataEnity = gridData.ChunkEntities[chunkPos];
+        FfGridChunkData ffGridChunkData = SystemAPI.GetComponent<FfGridChunkData>(ffGridChunkDataEnity);
+
+        Entity segmentedFfCalculationDataEntity = segmentedFlowField.ChunkEntities[chunkPos];
+        FfBestCosts ffChunkBestCosts = SystemAPI.GetComponent<FfBestCosts>(segmentedFfCalculationDataEntity);
+        FfNeighboursCosts ffChunkNeighbours = SystemAPI.GetComponent<FfNeighboursCosts>(segmentedFfCalculationDataEntity);
+
         JobHandle initChunkFf = new InitFlowFieldJob()
         {
-            BestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
-            CellsData = gridData.Cells[chunkPos],
+            BestCosts = ffChunkBestCosts.Cells,
+            CellsData = ffGridChunkData.Cells,
             Directions = Directions,
             GridMeta = gridMeta,
-            NeighboursCosts = segmentedFlowField.FfNeighboursChunk[chunkPos].Cells
+            NeighboursCosts = ffChunkNeighbours.Cells
         }.Schedule(gridMeta.CellsInChunk, 64);
 
         JobHandle integrationFieldChunk = new CalculateIntegrationFieldUniformJob
         {
-            CellsBestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
+            CellsBestCosts = ffChunkBestCosts.Cells,
             destIndex = GridUtils.GetCellInChunkFromPosition(clickCommand.Pos, gridMeta),
             Directions = Directions,
             GridMeta = gridMeta,
-            NeighboursCosts = segmentedFlowField.FfNeighboursChunk[chunkPos].Cells,
+            NeighboursCosts = ffChunkNeighbours.Cells,
         }.Schedule(initChunkFf);
         
         Entity bestDestinationEntity = ecb.CreateEntity();
@@ -100,7 +106,7 @@ partial struct FlowFieldSystem : ISystem
 
         JobHandle bestDirectionsInChunk = new CalculateBestDirectionJob
         {
-            CellsBestCosts = segmentedFlowField.FfBestCostsChunk[chunkPos].Cells,
+            CellsBestCosts = ffChunkBestCosts.Cells,
             CellsBestDirections = ffBestDirections.Cells,
             Directions = Directions,
             GridMeta = gridMeta

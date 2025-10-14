@@ -47,24 +47,22 @@ public class GridDebug : MonoBehaviour
         GridMeta gridMeta = query.GetSingleton<GridMeta>();
 
         query = entityManager.CreateEntityQuery(
-          typeof(SegmentedFlowField));
+          typeof(SegmentedFlowFieldCalculationData));
 
         if (query.CalculateEntityCount() == 0)
             return;
-        SegmentedFlowField segmentedFlowField = query.GetSingleton<SegmentedFlowField>();
+        SegmentedFlowFieldCalculationData segmentedFlowField = query.GetSingleton<SegmentedFlowFieldCalculationData>();
 
         query = entityManager.CreateEntityQuery(
           typeof(FfBestDirections));
         if (query.CalculateEntityCount() != 0)
         {
-            
             using (NativeArray<FfBestDirections> bestDirections =
                     query.ToComponentDataArray<FfBestDirections>(Allocator.TempJob))
             {
                 
                 for(int i = 0; i < gridMeta.CellsInChunk; i++)
                 {
-                    //Debug.Log("Direction: " + i + ": " + bestDirections[0].Cells[i].BestDirection);
                     int chunkX = bestDirections[0].ChunkPosition % gridMeta.ChunksInX;
                     int chunkZ = bestDirections[0].ChunkPosition / gridMeta.ChunksInZ;
                     int cellInChunkX = i % gridMeta.CellsInChunkRow;

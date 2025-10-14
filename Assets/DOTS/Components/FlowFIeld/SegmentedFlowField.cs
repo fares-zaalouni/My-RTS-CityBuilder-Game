@@ -3,10 +3,12 @@
 using Unity.Collections;
 using Unity.Entities;
 
-public partial struct SegmentedFlowField : IComponentData
+public partial struct SegmentedFlowFieldData : IComponentData
 {
-    public NativeArray<FfBestCosts> FfBestCostsChunk;
-    public NativeArray<FfNeighboursCosts> FfNeighboursChunk;
-    public NativeArray<FfMetaData> FfMetaDataChunk;
-    public FlowFieldState FfState;
+    public NativeArray<Entity> ChunkEntities;
+}
+
+public partial struct SegmentedFlowFieldCalculationData : IComponentData
+{
+    public NativeArray<Entity> ChunkEntities;
 }
