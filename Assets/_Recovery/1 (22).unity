@@ -148,9 +148,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 62268633d64cc254394270d36852b92b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridAuthoring
-  WorldSize: {x: 256, y: 0, z: 256}
-  CellRadius: 16
-  ChunkRadius: 32
+  WorldSize: {x: 1024, y: 0, z: 1024}
+  CellRadius: 1
+  ChunkRadius: 1
 --- !u!4 &367793904
 Transform:
   m_ObjectHideFlags: 0

@@ -5,5 +5,5 @@ using Unity.Entities;
 
 public partial struct AStarPath : IComponentData
 {
-    public NativeArray<AStarNode> Path;
+    public NativeList<int> Path;
 }

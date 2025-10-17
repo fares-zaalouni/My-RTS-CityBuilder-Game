@@ -362,12 +362,17 @@ public partial struct CalculateBestDirectionJob : IJobParallelFor
 {
     [ReadOnly] public NativeArray<FfCellBestCost> CellsBestCosts;
     [ReadOnly] public NativeArray<int3> Directions;
+    [ReadOnly] public int DestinationIndex;
     public NativeArray<FfCellBestDirection> CellsBestDirections;
     public GridMeta GridMeta;
 
     [BurstCompile]
     public void Execute(int index)
     {
+        if(index == DestinationIndex)
+        {
+            return;
+        }
         var cellBestCost = CellsBestCosts[index];
         if (cellBestCost.BestCost == uint.MaxValue)
         {

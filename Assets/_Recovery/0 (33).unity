@@ -1251,8 +1251,7 @@ MonoBehaviour:
   Active: 1
   displayMode: 3
   displayGrid: 1
-  ChunkOffset: 0.1
-  DisplayPath: 0
+  ChunkOffset: 0
 --- !u!4 &1347180159
 Transform:
   m_ObjectHideFlags: 0

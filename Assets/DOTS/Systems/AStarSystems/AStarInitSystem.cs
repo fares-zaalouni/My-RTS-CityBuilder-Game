@@ -20,14 +20,17 @@ partial struct AStarInitSystem : ISystem
         EntityManager entityManager = state.EntityManager;
 
         Entity astarDataEntity = entityManager.CreateEntity();
+
+        NativeArray<AStarNode> nodes = new NativeArray<AStarNode>(gridMeta.ChunkNumber, Allocator.Persistent);
         AStarData astarData = new AStarData
         {
-            Nodes = new NativeArray<AStarNode>(gridMeta.ChunkNumber, Allocator.Persistent)
+            Nodes = nodes,
+            OpenList = new AStarNativeMinHeap(gridMeta.ChunkNumber, nodes, Allocator.Persistent),
+            TouchedNodes = new NativeList<int>(Allocator.Persistent)
         };
-        
         for (int i = 0; i < gridMeta.ChunkNumber; i++)
         {
-            astarData.Nodes[i] = new AStarNode
+            nodes[i] = new AStarNode
             {
                 Index = i,
                 IsInClosedSet = false,
@@ -35,6 +38,8 @@ partial struct AStarInitSystem : ISystem
                 HeapIndex = -1
             };
         }
+        entityManager.AddComponentData(astarDataEntity, astarData);
+        state.Enabled = false;
     }
 
     [BurstCompile]

@@ -22,7 +22,8 @@ public class GridDebug : MonoBehaviour
     [SerializeField] bool Active;
     [SerializeField] DisplayMode displayMode = DisplayMode.Walkable;
     [SerializeField] bool displayGrid = true;
-
+    [SerializeField] float ChunkOffset = 0.25f;
+    [SerializeField] bool DisplayPath = true;
 
     void OnDrawGizmos()
     {
@@ -46,12 +47,7 @@ public class GridDebug : MonoBehaviour
             return;
         GridMeta gridMeta = query.GetSingleton<GridMeta>();
 
-        query = entityManager.CreateEntityQuery(
-          typeof(SegmentedFlowFieldCalculationData));
-
-        if (query.CalculateEntityCount() == 0)
-            return;
-        SegmentedFlowFieldCalculationData segmentedFlowField = query.GetSingleton<SegmentedFlowFieldCalculationData>();
+        
 
         query = entityManager.CreateEntityQuery(
           typeof(FfBestDirections));
@@ -60,21 +56,24 @@ public class GridDebug : MonoBehaviour
             using (NativeArray<FfBestDirections> bestDirections =
                     query.ToComponentDataArray<FfBestDirections>(Allocator.TempJob))
             {
-                
-                for(int i = 0; i < gridMeta.CellsInChunk; i++)
+                for (int i = 0; i < bestDirections.Length; i++)
                 {
-                    int chunkX = bestDirections[0].ChunkPosition % gridMeta.ChunksInX;
-                    int chunkZ = bestDirections[0].ChunkPosition / gridMeta.ChunksInZ;
-                    int cellInChunkX = i % gridMeta.CellsInChunkRow;
-                    int cellInChunkZ = i / gridMeta.CellsInChunkRow;
-                    float3 posCell = new float3
+                    for (int j = 0; j < gridMeta.CellsInChunk; j++)
                     {
-                        x = gridMeta.WorldPos.x + chunkX * gridMeta.ChunkDiameter + cellInChunkX * gridMeta.CellDiameter + gridMeta.CellRadius,
-                        y = 0,
-                        z = gridMeta.WorldPos.z + chunkZ * gridMeta.ChunkDiameter + cellInChunkZ * gridMeta.CellDiameter + gridMeta.CellRadius
-                    };
-                    Gizmos.DrawRay(posCell, bestDirections[0].Cells[i].BestDirection);
-                }
+                        Debug.Log("best direction: " + bestDirections[i].Cells[j].BestDirection + " for cell: " + j + " in chunk: " + i);
+                        int chunkX = bestDirections[i].ChunkPosition % gridMeta.ChunksInX;
+                        int chunkZ = bestDirections[i].ChunkPosition / gridMeta.ChunksInZ;
+                        int cellInChunkX = j % gridMeta.CellsInChunkRow;
+                        int cellInChunkZ = j / gridMeta.CellsInChunkRow;
+                        float3 posCell = new float3
+                        {
+                            x = gridMeta.WorldPos.x + chunkX * gridMeta.ChunkDiameter + cellInChunkX * gridMeta.CellDiameter + gridMeta.CellRadius,
+                            y = 0,
+                            z = gridMeta.WorldPos.z + chunkZ * gridMeta.ChunkDiameter + cellInChunkZ * gridMeta.CellDiameter + gridMeta.CellRadius
+                        };
+                        Gizmos.DrawRay(posCell, bestDirections[i].Cells[j].BestDirection);
+                    }
+                }             
             }
         }
         for (int i = 0; i < gridMeta.ChunkNumber; i++)
@@ -83,25 +82,44 @@ public class GridDebug : MonoBehaviour
             int z = i / gridMeta.ChunksInX;
             Gizmos.color = Color.green;
             Gizmos.DrawWireCube(new Vector3(
-                x * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.WorldPos.x + gridMeta.ChunkRadius,
+                x * (gridMeta.ChunkDiameter + ChunkOffset) + gridMeta.WorldPos.x + gridMeta.ChunkRadius,
                 0,
-                z * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.WorldPos.z + gridMeta.ChunkRadius)
-                , new Vector3(gridMeta.ChunkDiameter + 0.25f, 0, gridMeta.ChunkDiameter + 0.25f));
+                z * (gridMeta.ChunkDiameter + ChunkOffset) + gridMeta.WorldPos.z + gridMeta.ChunkRadius)
+                , new Vector3(gridMeta.ChunkDiameter + ChunkOffset, 0, gridMeta.ChunkDiameter + ChunkOffset));
 
             Gizmos.color = Color.red;
-           
+
             for (int j = 0; j < gridMeta.CellsInChunk; j++)
             {
                 int x2 = j % gridMeta.CellsInChunkRow;
                 int z2 = j / gridMeta.CellsInChunkRow;
                 Gizmos.DrawWireCube(new Vector3(
-                x2 * gridMeta.CellDiameter + gridMeta.WorldPos.x + x * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.CellRadius,
+                x2 * gridMeta.CellDiameter + gridMeta.WorldPos.x + x * (gridMeta.ChunkDiameter + ChunkOffset) + gridMeta.CellRadius,
                 0,
-                z2 * gridMeta.CellDiameter + gridMeta.WorldPos.z + z * (gridMeta.ChunkDiameter + 0.25f) + gridMeta.CellRadius),
+                z2 * gridMeta.CellDiameter + gridMeta.WorldPos.z + z * (gridMeta.ChunkDiameter + ChunkOffset) + gridMeta.CellRadius),
                 new Vector3(gridMeta.CellDiameter, 0, gridMeta.CellDiameter));
             }
         }
+        if (!DisplayPath)
+            return;
+        query = entityManager.CreateEntityQuery(
+          typeof(AStarPath));
+
+        if (query.CalculateEntityCount() == 0)
+            return;
+        AStarPath path = query.GetSingleton<AStarPath>();
         
+        for (var i = 0; i < path.Path.Length; i++)
+        {
+            int indexA = path.Path[i];
+            int chunkAX = indexA % gridMeta.ChunksInX;
+            int chunkAZ = indexA / gridMeta.ChunksInX;
+
+            float centerAX = chunkAX * gridMeta.ChunkDiameter + gridMeta.WorldPos.x + gridMeta.ChunkRadius;
+            float centerAZ = chunkAZ * gridMeta.ChunkDiameter + gridMeta.WorldPos.z + gridMeta.ChunkRadius;
+            Gizmos.color = Color.blue;
+            Gizmos.DrawCube(new float3(centerAX, 0, centerAZ), new float3(gridMeta.ChunkDiameter, gridMeta.ChunkDiameter / 2, gridMeta.ChunkDiameter));
+        }
 
     }
 

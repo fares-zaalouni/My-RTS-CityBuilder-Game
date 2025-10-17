@@ -1,59 +1,82 @@
 
 
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEditor.Experimental.GraphView;
+using UnityEngine;
+
+
+[BurstCompile]
+public partial struct AStarInitJob : IJobParallelFor
+{
+    [NativeDisableParallelForRestriction]
+    public NativeArray<AStarNode> Nodes;
+    [ReadOnly]
+    public NativeList<int> TouchedNodes;
+
+    [BurstCompile]
+    public void Execute(int index)
+    {
+        int nodeIndex = TouchedNodes[index];
+        AStarNode node = Nodes[nodeIndex];
+        
+        node.IsInClosedSet = false;
+        node.ParentIndex = -1;
+        node.HeapIndex = -1;
+        Nodes[nodeIndex] = node;
+    }
+}
 
 [BurstCompile]
 public partial struct AStarPathFindingJob : IJob
 {
-    public NativeArray<AStarNode> Nodes;
+    public NativeList<int> ResultPath;
     public int StartNodeIndex;
     public int EndNodeIndex;
     public int GridSizeX;
     public int GridSizeZ;
-    public readonly NativeArray<int3> Directions;
-    byte _DirectionsCount;
+    public AStarNativeMinHeap OpenList;
+    public NativeArray<int> Neighbours;
+    [ReadOnly]
+    public NativeArray<int3> Directions;
+    int _DirectionsCount;
+
+    public NativeList<int> TouchedNodes;
+
+
 
     [BurstCompile]
     public void Execute()
     {
+        TouchedNodes.Clear();
+        _DirectionsCount = Directions.Length;
 
-       /* Directions = new NativeArray<int3>(8, Allocator.TempJob);
-        Directions[0] = new int3(0, 0, 1); // North
-        Directions[1] = new int3(1, 0, 0); // East
-        Directions[2] = new int3(0, 0, -1); // South
-        Directions[3] = new int3(-1, 0, 0); // West
-        Directions[4] = new int3(1, 0, 1); // NorthEast
-        Directions[5] = new int3(1, 0, -1); // SouthEast
-        Directions[6] = new int3(-1, 0, -1); // SouthWest
-        Directions[7] = new int3(-1, 0, 1); // NorthWest*/
+        NativeArray<AStarNode> Nodes = OpenList.NodesArray;
 
-        _DirectionsCount = (byte)Directions.Length;
-
-        AStarNativeMinHeap openList = new AStarNativeMinHeap(Nodes.Count(), Nodes, Allocator.TempJob);
-        NativeArray<int> neighbours = new NativeArray<int>(8, Allocator.TempJob);
         AStarNode startNode = Nodes[StartNodeIndex];
-        AStarNode endNode = Nodes[EndNodeIndex];
 
         int3 endNodePos = GetGridPos(EndNodeIndex);
 
-        openList.Enqueue(startNode.Index, startNode.FCost, startNode.HCost);
-        while (!openList.IsEmpty)
+        OpenList.Enqueue(startNode.Index, startNode.FCost, startNode.HCost);
+        TouchedNodes.Add(startNode.Index);
+        while (!OpenList.IsEmpty)
         {
-            int currentNodeIndex = openList.Dequeue();
+            int currentNodeIndex = OpenList.Dequeue();
             AStarNode currentNode = Nodes[currentNodeIndex];
             currentNode.IsInClosedSet = true;
             Nodes[currentNodeIndex] = currentNode;
             if (currentNodeIndex == EndNodeIndex)
+            {
+                RetracePath(StartNodeIndex, EndNodeIndex, Nodes);
+                OpenList.Clear();
                 return;
-
-            GetNeighbours(currentNodeIndex, neighbours);
-            foreach (var neighbourIndex in neighbours)
+            }
+                
+            GetNeighbours(currentNodeIndex, Neighbours);
+            foreach (var neighbourIndex in Neighbours)
             {
                 if (neighbourIndex == -1)
                     continue;
@@ -66,7 +89,7 @@ public partial struct AStarPathFindingJob : IJob
                 int3 neighbourPos = GetGridPos(neighbourIndex);
 
                 uint newMovementCostToNeighbour = currentNode.GCost + GetDistance(currentPos, neighbourPos);
-                bool isInOpen = openList.Contains(neighbourNode.HeapIndex, neighbourIndex);
+                bool isInOpen = OpenList.Contains(neighbourNode.HeapIndex, neighbourIndex);
                 if (newMovementCostToNeighbour < neighbourNode.GCost || !isInOpen)
                 {
                     neighbourNode.GCost = newMovementCostToNeighbour;
@@ -74,22 +97,23 @@ public partial struct AStarPathFindingJob : IJob
                     neighbourNode.ParentIndex = currentNodeIndex;
 
                     if (!isInOpen)
-                        openList.Enqueue(neighbourNode.Index, neighbourNode.FCost, neighbourNode.HCost);
+                    {
+                        OpenList.Enqueue(neighbourNode.Index, neighbourNode.FCost, neighbourNode.HCost);
+                    }
                     else
-                        openList.InsertAt(neighbourNode.HeapIndex, neighbourNode.FCost, neighbourNode.HCost);
+                        OpenList.InsertAt(neighbourNode.HeapIndex, neighbourNode.FCost, neighbourNode.HCost);
 
                     Nodes[neighbourIndex] = neighbourNode;
+                    TouchedNodes.Add(neighbourNode.Index);
                 }
             }
 
         }
-        openList.Dispose();
-        neighbours.Dispose();
+        
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GetNeighbours(int index, NativeArray<int> neighboursIndexes)
     {
-
         int3 pos = GetGridPos(index);
 
         for (int i = 0; i < _DirectionsCount; i++)
@@ -119,10 +143,29 @@ public partial struct AStarPathFindingJob : IJob
     {
         int distX = math.abs(posA.x - posB.x);
         int distZ = math.abs(posA.z - posB.z);
+        int min = math.min(distX, distZ);
+        int max = math.max(distX, distZ);
+        return (uint)(14 * min + 10 * (max - min));
+    }
 
-        if (distX > distZ)
-            return (uint)(14 * distZ + 10 * distX);
-        return (uint)(14 * distX + 10 * distZ); 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RetracePath(int startNodeIndex, int endNodeIndex, NativeArray<AStarNode> Nodes)
+    {
+        NativeList<int> path = new NativeList<int>(Allocator.Temp)
+        {
+            endNodeIndex
+        };
+        while (endNodeIndex != startNodeIndex)
+        {
+            path.Add(Nodes[endNodeIndex].ParentIndex);
+            endNodeIndex = Nodes[endNodeIndex].ParentIndex;
+        }
+
+        while (path.Length > 0)
+        {
+            ResultPath.Add(path[path.Length - 1]);
+            path.RemoveAtSwapBack(path.Length - 1);
+        }
     }
     
 }

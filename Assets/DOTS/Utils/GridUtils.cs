@@ -36,9 +36,9 @@ public struct GridUtils
 
     return chunkX + chunkZ * grid.ChunksInX;
   }
-  
+
   [MethodImpl(MethodImplOptions.AggressiveInlining)]
-  public static int  GetCellInChunkFromPosition(float3 worldPos, in GridMeta grid)
+  public static int GetCellInChunkFromPosition(float3 worldPos, in GridMeta grid)
   {
     float3 localPos = worldPos - grid.WorldPos;
     int chunkX = (int)math.floor(localPos.x / grid.ChunkDiameter);
@@ -51,8 +51,27 @@ public struct GridUtils
 
     x = math.clamp(x, 0, grid.CellsInChunkRow - 1);
     z = math.clamp(z, 0, grid.CellsInChunkRow - 1);
-    
+
     return x + z * grid.CellsInChunkRow;
+  }
+  
+  [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+  public static int ClumpCellToChunk(float3 worldPos, int chunkIndex, in GridMeta grid)
+  {
+    int gridPos = GetCellFromPosition(worldPos, grid);
+
+    int gridPosX = gridPos % grid.SizeX;
+    int gridPosZ = gridPos / grid.SizeX;
+
+    int minCellX = (chunkIndex % grid.ChunksInX) * grid.CellsInChunkRow;
+
+    int minCellZ = (chunkIndex / grid.ChunksInX) * grid.CellsInChunkRow;
+
+    int cellInChunkPosX = math.clamp(gridPosX - minCellX, 0, grid.CellsInChunkRow - 1);
+    int cellInChunkPosZ = math.clamp(gridPosZ - minCellZ, 0, grid.CellsInChunkRow - 1);
+
+    return cellInChunkPosX + cellInChunkPosZ * grid.CellsInChunkRow;
   }
   
 }
