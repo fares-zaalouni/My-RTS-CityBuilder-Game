@@ -4,44 +4,95 @@ using UnityEngine.InputSystem;
 
 public class InputManager : MonoBehaviour
 {
-  [SerializeField] private InputActionAsset InputActionAsset;
+    // Singleton
+    public static InputManager Instance { get; private set; }
+    
+    [SerializeField] private InputActionAsset inputActionAsset;
 
-  private InputAction _Click;
-  private InputAction _RightClick;
+    private InputAction _click;
+    private InputAction _rightClick;
+    private InputAction _sClick;
+    private InputAction _flowFieldRequest;
 
-  //Events
-  public static event Action<Vector2> OnLeftClick;
-  public static event Action<Vector2> OnRightClick;
+    // Events
+    public static event Action<Vector2> OnLeftClick;
+    public static event Action<Vector2> OnRightClick;
+    public static event Action OnSpawnUnit;
+    public static event Action OnFlowFieldRequest;
 
-  void Awake()
-  {
-    var inputActionMap = InputActionAsset.FindActionMap("Main");
-    _Click = inputActionMap.FindAction("Click");
-    _RightClick = inputActionMap.FindAction("RightClick");
-
-  }
-
-  private void OnEnable()
-  {
-    _Click.Enable();
-    _RightClick.Enable();
-  }
-
-  void Update()
-  {
-    if (_Click.WasCompletedThisFrame())
+    void Awake()
     {
-      OnLeftClick?.Invoke(Mouse.current.position.ReadValue());
-    }
-    if (_RightClick.WasCompletedThisFrame())
-    {
-      OnRightClick?.Invoke(Mouse.current.position.ReadValue());
-    }
-  }
+        // Singleton setup
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        
+        // Get actions
+        var inputActionMap = inputActionAsset.FindActionMap("Main");
+        _click = inputActionMap.FindAction("Click");
+        _rightClick = inputActionMap.FindAction("RightClick");
+        _sClick = inputActionMap.FindAction("SpawnUnit");
+        _flowFieldRequest = inputActionMap.FindAction("FlowFieldRequest");
 
-  private void OnDisable()
-  {
-    _Click.Disable();
-    _RightClick.Disable();
-  }
+        // Subscribe to callbacks (better than Update polling)
+        _click.performed += OnClickPerformed;
+        _rightClick.performed += OnRightClickPerformed;
+        _sClick.performed += OnSpawnPerformed;
+        _flowFieldRequest.performed += OnFlowFieldRequestPerformed;
+    }
+
+    private void OnEnable()
+    {
+        _click?.Enable();
+        _rightClick?.Enable();
+        _sClick?.Enable();
+        _flowFieldRequest?.Enable();
+    }
+
+    private void OnDisable()
+    {
+        _click?.Disable();
+        _rightClick?.Disable();
+        _sClick?.Disable(); 
+        _flowFieldRequest?.Disable();
+    }
+
+    private void OnDestroy()
+    {
+        _click.performed -= OnClickPerformed;
+        _rightClick.performed -= OnRightClickPerformed;
+        _sClick.performed -= OnSpawnPerformed;
+        _flowFieldRequest.performed -= OnFlowFieldRequestPerformed;
+    }
+
+    private void OnClickPerformed(InputAction.CallbackContext context)
+    {
+        if (Mouse.current != null) // ← Null check
+        {
+            Vector2 mousePos = Mouse.current.position.ReadValue();
+            OnLeftClick?.Invoke(mousePos);
+        }
+    }
+
+    private void OnRightClickPerformed(InputAction.CallbackContext context)
+    {
+        if (Mouse.current != null)
+        {
+            Vector2 mousePos = Mouse.current.position.ReadValue();
+            OnRightClick?.Invoke(mousePos);
+        }
+    }
+
+    private void OnSpawnPerformed(InputAction.CallbackContext context)
+    {
+        OnSpawnUnit?.Invoke();
+    }
+
+    private void OnFlowFieldRequestPerformed(InputAction.CallbackContext context)
+    {
+        OnFlowFieldRequest?.Invoke();
+    }
 }

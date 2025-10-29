@@ -50,19 +50,21 @@ public class GridDebug : MonoBehaviour
         
 
         query = entityManager.CreateEntityQuery(
-          typeof(FfBestDirections));
+            typeof(FfBestDirectionsStatus),
+            typeof(FfBestDirections));
         if (query.CalculateEntityCount() != 0)
         {
             using (NativeArray<FfBestDirections> bestDirections =
                     query.ToComponentDataArray<FfBestDirections>(Allocator.TempJob))
+            using (NativeArray<FfBestDirectionsStatus> bestDirectionsStatus =
+                    query.ToComponentDataArray<FfBestDirectionsStatus>(Allocator.TempJob))
             {
                 for (int i = 0; i < bestDirections.Length; i++)
                 {
                     for (int j = 0; j < gridMeta.CellsInChunk; j++)
                     {
-                        Debug.Log("best direction: " + bestDirections[i].Cells[j].BestDirection + " for cell: " + j + " in chunk: " + i);
-                        int chunkX = bestDirections[i].ChunkPosition % gridMeta.ChunksInX;
-                        int chunkZ = bestDirections[i].ChunkPosition / gridMeta.ChunksInZ;
+                        int chunkX = bestDirectionsStatus[i].UsedChunkIndex % gridMeta.ChunksInX;
+                        int chunkZ = bestDirectionsStatus[i].UsedChunkIndex / gridMeta.ChunksInZ;
                         int cellInChunkX = j % gridMeta.CellsInChunkRow;
                         int cellInChunkZ = j / gridMeta.CellsInChunkRow;
                         float3 posCell = new float3
@@ -73,7 +75,7 @@ public class GridDebug : MonoBehaviour
                         };
                         Gizmos.DrawRay(posCell, bestDirections[i].Cells[j].BestDirection);
                     }
-                }             
+                }
             }
         }
         for (int i = 0; i < gridMeta.ChunkNumber; i++)

@@ -31,7 +31,8 @@ public partial struct GridInitializationSystem : ISystem
         Entity segmentedFlowFieldCalculationDataEntity = state.EntityManager.CreateEntity();
         SegmentedFlowFieldCalculationData segmentedFlowFieldCalculationData = new SegmentedFlowFieldCalculationData
         {
-            ChunkEntities = new NativeArray<Entity>(grid.ChunkNumber, Allocator.Persistent)
+            ChunkEntities = new NativeArray<Entity>(grid.ChunkNumber, Allocator.Persistent),
+            ActiveChunks = new NativeHashSet<int>(INITIAL_FF_COUNT, Allocator.Persistent),
         };
         
         for (int i = 0; i < grid.ChunkNumber; i++)
@@ -44,7 +45,6 @@ public partial struct GridInitializationSystem : ISystem
 
             Entity chunkCalculationData = state.EntityManager.CreateEntity();
             segmentedFlowFieldCalculationData.ChunkEntities[i] = chunkCalculationData;
-
             
             FfGridChunkData ffGridData = new FfGridChunkData
             {

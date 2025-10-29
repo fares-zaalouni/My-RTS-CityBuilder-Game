@@ -15,14 +15,4 @@ public class Unit : MonoBehaviour
     {
         _CharacterController = GetComponent<CharacterController>();
     }
-
-    void OnEnable()
-    {
-        FlowFieldPathFinding.RegisterUnit(this, FlowFieldPathFinding.ActionA.Add);
-    }
-
-    void OnDisable()
-    {
-        FlowFieldPathFinding.UnregisterUnit(this, FlowFieldPathFinding.ActionA.Remove);
-    }
 }

@@ -60,8 +60,6 @@ public struct GridMeta : IComponentData
         ChunkDiameter = (short)(chunkRadius * 2);
         ChunksInX = (short)Mathf.RoundToInt(WorldSize.x / ChunkDiameter);
         ChunksInZ = (short)Mathf.RoundToInt(WorldSize.z / ChunkDiameter);
-
-        Debug.Log("Chunk size:  " + ChunkNumber);
     }
 }
 

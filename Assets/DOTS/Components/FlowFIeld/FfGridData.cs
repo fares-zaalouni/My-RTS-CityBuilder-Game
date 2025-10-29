@@ -9,10 +9,6 @@ public enum FlowFieldState
     Calculating,
     Ready
   }
-public struct FfMetaData : IComponentData
-{
-  public NativeArray<JobHandle> JobHandles;
-}
 
 public struct FfCellData
 {

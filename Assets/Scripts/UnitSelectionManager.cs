@@ -6,7 +6,7 @@ using UnityEngine;
 public class UnitSelectionManager : MonoBehaviour
 {
     public static UnitSelectionManager Instance { get; private set; }
-    public static event Action<Vector3, List<Unit>> OnMoveTo;
+    public static event Action<Vector3, Vector3, uint> OnMoveTo;
 
     private int _TerrainLayerMask;
     private int _UnitsMask;
@@ -15,19 +15,20 @@ public class UnitSelectionManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (Instance != null)
         {
-            Destroy(gameObject);
             return;
         }
         Instance = this;
         Groups = new(10);
         _SelectedUnitGroup = new();
+        Debug.Log("Selectted group id: " + _SelectedUnitGroup.Id);
     }
     void OnEnable()
     {
         GameManager.OnInGameLeftClick += SelectUnit;
     }
+
 
     void Start()
     {
@@ -54,16 +55,12 @@ public class UnitSelectionManager : MonoBehaviour
 
             GameObject hitObject = hitInfo.collider.gameObject;
             Unit unit = hitObject.GetComponent<Unit>();
-            _SelectedUnitGroup.Group.Add(unit);
-            var unitRenderer = hitObject.GetComponent<Renderer>();
-            if (unitRenderer != null)
-            {
-                unitRenderer.material.color = Color.green;
-            }
+            _SelectedUnitGroup.AddToGoup(unit);
+            
         }
         else if (Physics.Raycast(ray, out var hitInfo2, 100f, _TerrainLayerMask) && _SelectedUnitGroup.Group.Count != 0)
         {
-            OnMoveTo?.Invoke(hitInfo2.point, _SelectedUnitGroup.Group);
+            OnMoveTo?.Invoke(_SelectedUnitGroup.Group[0].transform.position, hitInfo2.point, _SelectedUnitGroup.Id);
         }
 
     }

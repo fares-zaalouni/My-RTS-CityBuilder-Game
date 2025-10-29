@@ -30,41 +30,67 @@ partial struct AStarPathFindingSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        AStarPath aStarPath = new AStarPath
-        {
-            Path = new NativeList<int>(Allocator.Persistent)
-        };
-        
         EntityManager entityManager = state.EntityManager;
+        EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
         GridMeta gridMeta = SystemAPI.GetSingleton<GridMeta>();
         AStarData aStarData = SystemAPI.GetSingleton<AStarData>();
-        if(!Neighbours.IsCreated)
-        {
-            Neighbours = new NativeArray<int>(8, Allocator.Persistent);
-        }
-            
-        Entity aStarPathEntity = entityManager.CreateEntity();
-        entityManager.AddComponentData(aStarPathEntity, aStarPath);
-        JobHandle initJob = new AStarInitJob
-        {
-            Nodes = aStarData.Nodes,
-            TouchedNodes = aStarData.TouchedNodes
-        }.Schedule(aStarData.TouchedNodes.Length, 64);
 
-        JobHandle findPathJob = new AStarPathFindingJob
+        foreach (var (astarRequest, entity) in SystemAPI.Query<RefRO<AStarPathRequest>>().WithEntityAccess())
         {
-            ResultPath = aStarPath.Path,
-            StartNodeIndex = 0,
-            EndNodeIndex = 14,
-            GridSizeX = gridMeta.ChunksInX,
-            GridSizeZ = gridMeta.ChunksInZ,
-            OpenList = aStarData.OpenList,
-            Neighbours = Neighbours,
-            Directions = _Directions,
-            TouchedNodes = aStarData.TouchedNodes
-        }.Schedule(initJob);
-        findPathJob.Complete();
-        state.Enabled = false;
+            AStarPath aStarPath = new AStarPath
+            {
+                Path = new NativeList<int>(Allocator.Persistent)
+            };
+
+            AStarPathRequester requester = new AStarPathRequester
+            {
+                RequesterId = astarRequest.ValueRO.RequesterId
+            };
+
+            if (!Neighbours.IsCreated)
+            {
+                Neighbours = new NativeArray<int>(8, Allocator.Persistent);
+            }
+
+            JobHandle initJob = new AStarInitJob
+            {
+                Nodes = aStarData.Nodes,
+                TouchedNodes = aStarData.TouchedNodes
+            }.Schedule(aStarData.TouchedNodes.Length, 64);
+
+            int startIndex = astarRequest.ValueRO.StartPosition;
+            int endIndex = astarRequest.ValueRO.EndPosition;
+
+            JobHandle findPathJob = new AStarPathFindingJob
+            {
+                ResultPath = aStarPath.Path,
+                StartNodeIndex = startIndex,
+                EndNodeIndex = endIndex,
+                GridSizeX = gridMeta.ChunksInX,
+                GridSizeZ = gridMeta.ChunksInZ,
+                OpenList = aStarData.OpenList,
+                Neighbours = Neighbours,
+                Directions = _Directions,
+                TouchedNodes = aStarData.TouchedNodes
+            }.Schedule(initJob);
+            //Change LATER
+            findPathJob.Complete();
+            AStarPathStatus aStarPathStatus = new AStarPathStatus
+            {
+                PathFound = aStarPath.Path.Length > 0,
+                IsDeprecated = false,
+                PathJobHandle = findPathJob
+            };
+
+            Entity aStarPathEntity = entityManager.CreateEntity();
+            ecb.AddComponent(aStarPathEntity, aStarPath);
+            ecb.AddComponent(aStarPathEntity, aStarPathStatus);
+            ecb.AddComponent(aStarPathEntity, requester);
+
+            ecb.DestroyEntity(entity);
+        }
+        ecb.Playback(entityManager);
+        ecb.Dispose();
     }
 
     [BurstCompile]

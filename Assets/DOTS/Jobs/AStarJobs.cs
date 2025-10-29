@@ -43,9 +43,7 @@ public partial struct AStarPathFindingJob : IJob
     [ReadOnly]
     public NativeArray<int3> Directions;
     int _DirectionsCount;
-
     public NativeList<int> TouchedNodes;
-
 
 
     [BurstCompile]
